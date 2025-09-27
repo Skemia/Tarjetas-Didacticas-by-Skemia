@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tarjetas Didacticas By Skemia</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <!-- Se añade la librería PapaParse para leer archivos CSV -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        /* --- NUEVO CSS PARA LA ANIMACIÓN DE FUNDIDO --- */
+        .flashcard {
+            position: relative; /* Contenedor para los elementos absolutos */
+        }
+        .flashcard-front, .flashcard-back {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            text-align: center;
+            transition: opacity 0.4s ease-in-out; /* Transición suave de opacidad */
+        }
+        /* La cara frontal es visible por defecto */
+        .flashcard-front {
+            opacity: 1;
+        }
+        /* La cara trasera está oculta por defecto */
+        .flashcard-back {
+            opacity: 0;
+        }
+        /* Estado "flipped": se invierte la opacidad */
+        .flashcard.flipped .flashcard-front {
+            opacity: 0;
+        }
+        .flashcard.flipped .flashcard-back {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 dark:bg-gray-900 flex items-center justify-center min-h-screen p-4">
+
+    <div id="app-container" class="w-full max-w-2xl mx-auto">
+        <div class="text-center mb-8">
+            <h1 class="text-3xl md:text-4xl font-bold text-gray-800 dark:text-white">Tarjetas Didacticas By Skemia</h1>
+            <p class="text-gray-600 dark:text-gray-300 mt-2">Desafía tu mente. Domina el conocimiento. Alcanza el éxito.</p>
+        </div>
+
+        <!-- Card Counter -->
+        <div id="card-counter" class="text-center text-sm font-semibold text-gray-500 dark:text-gray-400 mb-4"></div>
+
+        <!-- Contenedor de la Tarjeta (Estructura simplificada) -->
+        <div class="relative h-80">
+            <div id="flashcard" class="flashcard rounded-2xl shadow-lg h-full cursor-pointer">
+                <!-- Front of the card (Question) -->
+                <div id="card-front" class="flashcard-front bg-white dark:bg-gray-800 rounded-2xl border-2 border-gray-200 dark:border-gray-700">
+                    <p id="question-text" class="text-xl md:text-2xl font-semibold text-gray-800 dark:text-white">Cargando tarjetas...</p>
+                </div>
+                <!-- Back of the card (Answer) -->
+                <div id="card-back" class="flashcard-back bg-blue-500 dark:bg-blue-600 text-white rounded-2xl">
+                    <p id="answer-text" class="text-md md:text-lg"></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="flex justify-center items-center space-x-4 mt-8">
+            <button id="prev-button" class="w-1/3 md:w-auto bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed">
+                Anterior
+            </button>
+            <button id="flip-button" class="w-1/3 md:w-auto bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Revelar
+            </button>
+            <button id="next-button" class="w-1/3 md:w-auto bg-gray-700 hover:bg-gray-800 text-white font-bold py-3 px-6 rounded-lg shadow-md transition-transform transform hover:scale-105">
+                Siguiente
+            </button>
+        </div>
+
+        <!-- Completion Message -->
+        <div id="completion-message" class="hidden text-center mt-8 p-6 bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200 rounded-lg">
+            <h2 class="text-2xl font-bold">¡Felicidades!</h2>
+            <p class="mt-2">Has completado todas las tarjetas. ¡Gran trabajo!</p>
+            <button id="restart-button" class="mt-4 bg-green-500 hover:bg-green-600 text-white font-bold py-2 px-4 rounded-lg">
+                Practicar de Nuevo
+            </button>
+        </div>
+
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            let flashcardsData = [];
+            let currentCardIndex = 0;
+            let isFlipped = false;
+
+            const cardCounter = document.getElementById('card-counter');
+            const flashcard = document.getElementById('flashcard');
+            const questionText = document.getElementById('question-text');
+            const answerText = document.getElementById('answer-text');
+            const prevButton = document.getElementById('prev-button');
+            const flipButton = document.getElementById('flip-button');
+            const nextButton = document.getElementById('next-button');
+            const completionMessage = document.getElementById('completion-message');
+            const restartButton = document.getElementById('restart-button');
+            const appContainer = document.getElementById('app-container');
+
+            // Se mueven los datos del CSV a una variable de texto para evitar errores de carga.
+            const csvData = `pregunta,respuesta
+"¿Cuáles son los tres aspectos clave que se están implantando actualmente en los centros sanitarios modernos, además de las tradicionales ideas de higiene y seguridad en el trabajo?","Condiciones de trabajo, ergonomía laboral, y carga física y mental."
+"En el caso de caída de objetos, ¿cuál es la regla de seguridad específica para las estanterías en cuanto a la colocación de las cargas y su estabilidad?","Se debe garantizar la estabilidad de los apilamientos, sujetar o anclar firmemente las estanterías a elementos sólidos, y colocar las cargas más pesadas en los estantes bajos. También se debe respetar la capacidad de carga de las estanterías y la capacidad nominal del medio de elevación."
+"¿Cuáles son las tres primeras fases que deben tenerse en cuenta al realizar la manipulación manual de cargas para una correcta postura?","1ª Fase: Apoyar los pies firmemente. 2ª Fase: Separar los pies ligeramente. 3ª Fase: Doblar la cadera y las rodillas para coger la carga."
+"En la prevención del riesgo eléctrico, ¿qué dos elementos de seguridad deben combinarse con el uso de sistemas de puesta a tierra?","Interruptores diferenciales y magnetotérmicos."
+"Respecto a la postura de trabajo de pie, ¿qué medida se recomienda para reducir la tensión muscular, y a qué altura aproximada debe estar el plano de trabajo?","Para reducir la tensión muscular, se debe mantener un pie apoyado sobre un objeto o reposapiés y alternar el pie; el plano de trabajo debe estar a la altura aproximada de los codos."
+"¿Qué se entiende por ""carga mental"" en el ámbito laboral y qué puede provocar?","Se refiere al nivel de actividad mental necesario para desarrollar el trabajo. Una carga mental excesiva puede provocar fatiga mental."
+"¿Qué tipo de señalización de seguridad se utiliza para indicar la localización de equipos contra incendios y qué forma y color tiene?","Señalización de equipos de lucha contra incendios. Tienen forma rectangular o cuadrada con un pictograma blanco sobre fondo rojo."
+"Según el Plan de Autoprotección, ¿cuál es el propósito del Capítulo 3, ""Inventario, análisis y evaluación de riesgos""?","Identificar y analizar los riesgos tanto de origen interno como externo que puedan afectar al centro, y evaluar su impacto."
+"¿Qué información clave debe contener el Capítulo 8 del Plan de Autoprotección, referente a la integración con otros planes?","Los protocolos de notificación de la emergencia, coordinación con servicios externos y la forma de integración con planes de ámbito superior."
+"¿Quién es el responsable de activar el Plan de Actuación ante Emergencias según el Capítulo 5 del Plan de Autoprotección?","El Jefe de Emergencia, o en su ausencia, el Jefe de Intervención."
+"¿Cuál es el objetivo principal del Capítulo 1 del Plan de Autoprotección?","Identificar al titular de la actividad, al director del plan y a los redactores, así como describir el emplazamiento del establecimiento."
+"¿Qué función principal tienen los Equipos de Segunda Intervención (ESI) en una emergencia?","Actuar cuando la emergencia sobrepasa la capacidad de los Equipos de Primera Intervención (EPI), utilizando medios más específicos y requiriendo mayor formación."
+"¿Cuáles son las cuatro acciones básicas que se deben llevar a cabo ante una emergencia, según el Plan de Autoprotección?","Detectar y alertar, actuar (mecanismos de respuesta), evacuar o confinar, y prestar las primeras ayudas."
+"¿Qué Real Decreto establece las disposiciones mínimas de seguridad y salud en los lugares de trabajo?","Real Decreto 486/1997."
+"¿Qué es la ""fatiga visual"" y cuáles son algunos de sus síntomas?","Es la alteración reversible de la función visual por un sobreesfuerzo de los órganos visuales. Los síntomas incluyen pesadez de ojos, picores, visión borrosa y dolores de cabeza."
+"¿Qué tres criterios se utilizan en el Capítulo 6 del Plan de Actuación ante Emergencias para clasificar las emergencias?","En función del tipo de riesgo, en función de la gravedad, y en función de la ocupación y medios humanos."
+"¿Qué debe reflejarse específicamente en los planos de recorridos de evacuación y áreas de confinamiento dentro del Capítulo 4 del Plan de Autoprotección?","El número de personas a evacuar o confinar por áreas, siguiendo los criterios fijados en la normativa vigente."
+"Mencione dos de los programas incluidos en el Capítulo 9 (Mantenimiento de la eficacia y actualización del Plan de Autoprotección).","Programa de reciclaje de formación e información, programa de sustitución de medios y recursos, programa de ejercicios y simulacros, programa de revisión y actualización de la documentación, o programa de auditorías e inspecciones."
+"¿Qué Real Decreto aborda específicamente la protección sanitaria contra radiaciones ionizantes?","Real Decreto 783/2001."
+"¿Cuál es la ley fundamental en materia de prevención de riesgos laborales y qué Real Decreto desarrolla las disposiciones mínimas sobre la manipulación manual de cargas?","La ley fundamental es la Ley 31/1995 de Prevención de Riesgos Laborales. El Real Decreto sobre manipulación manual de cargas es el Real Decreto 487/1997."
+"¿Qué establece el Real Decreto 393/2007?","Aprueba la Norma Básica de Autoprotección de los centros, establecimientos y dependencias que puedan dar origen a situaciones de emergencia."`;
+
+
+            function parseAndLoad() {
+                Papa.parse(csvData, {
+                    header: true,
+                    skipEmptyLines: true,
+                    complete: (results) => {
+                        flashcardsData = results.data;
+                        if (flashcardsData.length > 0) {
+                            showCard(currentCardIndex);
+                        } else {
+                            questionText.textContent = "No se encontraron tarjetas.";
+                            cardCounter.textContent = 'Tarjeta 0 de 0';
+                        }
+                    }
+                });
+            }
+
+            function showCard(index) {
+                if (flashcardsData.length === 0) {
+                    questionText.textContent = "No hay tarjetas para mostrar.";
+                    document.querySelector('.flex.justify-center').classList.add('hidden');
+                    cardCounter.textContent = 'Tarjeta 0 de 0';
+                    return;
+                }
+
+                if (index >= flashcardsData.length) {
+                    showCompletion();
+                    return;
+                }
+
+                const updateText = () => {
+                    questionText.textContent = flashcardsData[index].pregunta;
+                    answerText.textContent = flashcardsData[index].respuesta;
+                    cardCounter.textContent = `Tarjeta ${index + 1} de ${flashcardsData.length}`;
+                };
+
+                // Si la tarjeta está mostrando la respuesta, la volvemos a la pregunta antes de cambiar el texto
+                if (isFlipped) {
+                    // Esperamos a que la transición de opacidad termine
+                    flashcard.addEventListener('transitionend', updateText, { once: true });
+                    flashcard.classList.remove('flipped');
+                    isFlipped = false;
+                } else {
+                    updateText();
+                }
+
+                prevButton.disabled = index <= 0;
+            }
+
+            function showCompletion() {
+                appContainer.classList.add('hidden');
+                completionMessage.classList.remove('hidden');
+            }
+
+            function restart() {
+                completionMessage.classList.add('hidden');
+                appContainer.classList.remove('hidden');
+                currentCardIndex = 0;
+                showCard(currentCardIndex);
+            }
+
+            prevButton.addEventListener('click', () => {
+                if (currentCardIndex > 0) {
+                    currentCardIndex--;
+                    showCard(currentCardIndex);
+                }
+            });
+
+            const flipCard = () => {
+                 if(flashcardsData.length > 0 && currentCardIndex < flashcardsData.length) {
+                    flashcard.classList.toggle('flipped');
+                    isFlipped = !isFlipped;
+                }
+            }
+
+            flipButton.addEventListener('click', flipCard);
+            flashcard.addEventListener('click', flipCard);
+            
+            nextButton.addEventListener('click', () => {
+                currentCardIndex++;
+                showCard(currentCardIndex);
+            });
+
+            restartButton.addEventListener('click', restart);
+
+            parseAndLoad();
+        });
+    </script>
+</body>
+</html>
